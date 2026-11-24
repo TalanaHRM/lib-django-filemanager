@@ -15,7 +15,8 @@ def get_install_requires():
             line.startswith('#')
             or line == ''
             or line.startswith('http')
-            or line.startswith('git')
+            or line.startswith('git+')
+            or line.startswith('-')
         )
         if skip:
             continue

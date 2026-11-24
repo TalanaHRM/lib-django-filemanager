@@ -55,7 +55,7 @@ class CKEditorWidget(forms.Textarea):
             div
             + u"""<script type="text/javascript">
                     document.addEventListener('DOMContentLoaded', function() {
-                      CKEDITOR.replace('%s',%s);
+                      CKEDITOR.replace(%s, %s);
                     }, false);
                   </script>""" % (_js_literal(element_id), _js_literal(self.config))
         )

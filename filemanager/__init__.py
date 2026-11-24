@@ -1,10 +1,12 @@
 from django.shortcuts import render
 from django.http import Http404, HttpResponse
+from django.utils.http import content_disposition_header
 from django import forms
 from PIL import Image
 from . import settings
 import logging
 import mimetypes
+import struct
 import os
 import shutil
 import re
@@ -222,7 +224,7 @@ class FileManager(object):
                     guessed_exts = mimetypes.guess_all_extensions(mimetype)
                     guessed_exts = [ext[1:] for ext in guessed_exts]
                     common = [ext for ext in guessed_exts if ext in self.extensions]
-                    if not common:
+                    if self.extensions and not common:
                         os.remove(filepath)
                         messages.append(
                             "File type not allowed : "
@@ -238,8 +240,9 @@ class FileManager(object):
                     messages.append('Folder created successfully : ' + name)
                 except OSError:
                     messages.append('Folder couldn\'t be created : ' + name)
-                except Exception as e:
-                    messages.append('Unexpected error : ' + str(e))
+                except Exception:
+                    logger.exception('filemanager %s failed', action)
+                    messages.append('Unexpected error')
             else:
                 messages.append(
                     'Folder couldn\' be created because maximum number of '
@@ -260,8 +263,9 @@ class FileManager(object):
                 )
             except OSError:
                 messages.append('Folder couldn\'t renamed to ' + name)
-            except Exception as e:
-                messages.append('Unexpected error : ' + str(e))
+            except Exception:
+                logger.exception('filemanager %s failed', action)
+                messages.append('Unexpected error')
         elif action == 'delete' and file_or_dir == 'dir':
             if path == '/':
                 messages.append('root folder can\'t be deleted')
@@ -273,8 +277,9 @@ class FileManager(object):
                     messages.append('Folder deleted successfully : ' + name)
                 except OSError:
                     messages.append('Folder couldn\'t deleted : ' + name)
-                except Exception as e:
-                    messages.append('Unexpected error : ' + str(e))
+                except Exception:
+                    logger.exception('filemanager %s failed', action)
+                    messages.append('Unexpected error')
         elif action == 'rename' and file_or_dir == 'file':
             oldname = path.split('/')[-1]
             old_ext = (
@@ -296,8 +301,9 @@ class FileManager(object):
                     )
                 except OSError:
                     messages.append('File couldn\'t be renamed to ' + name)
-                except Exception as e:
-                    messages.append('Unexpected error : ' + str(e))
+                except Exception:
+                    logger.exception('filemanager %s failed', action)
+                    messages.append('Unexpected error')
             else:
                 if old_ext:
                     messages.append(
@@ -320,8 +326,9 @@ class FileManager(object):
                     messages.append('File deleted successfully : ' + name)
                 except OSError:
                     messages.append('File couldn\'t deleted : ' + name)
-                except Exception as e:
-                    messages.append('Unexpected error : ' + str(e))
+                except Exception:
+                    logger.exception('filemanager %s failed', action)
+                    messages.append('Unexpected error')
         elif action == 'move' or action == 'copy':
             # from path to current_path
             source = self.resolve(path)
@@ -349,15 +356,16 @@ class FileManager(object):
                         messages.append(
                             'File/folder couldn\'t be moved/copied.'
                         )
-                    except Exception as e:
-                        messages.append('Unexpected error : ' + str(e))
+                    except Exception:
+                        logger.exception('filemanager %s failed', action)
+                        messages.append('Unexpected error')
         elif action == 'unzip':
             if file_or_dir == 'dir':
                 messages.append('Cannot unzip a directory')
             else:
                 try:
                     directory = self.resolve(self.current_path)
-                    filename = os.path.join(directory, os.path.basename(os.path.normpath(path)))
+                    filename = self.resolve(path)
                     with zipfile.ZipFile(filename, 'r') as zip_ref:
                         self._extract_allowed(zip_ref, directory, messages)
                 except Exception:
@@ -434,7 +442,7 @@ class FileManager(object):
             try:
                 with Image.open(full_path) as image:
                     return _image_response(_thumbnail(image), mimetype, mimetype.split('/')[1])
-            except (OSError, ValueError, KeyError, Image.DecompressionBombError):
+            except (OSError, ValueError, KeyError, SyntaxError, struct.error, Image.DecompressionBombError):
                 logger.warning('No thumbnail for %s, serving the extension icon', path, exc_info=True)
         icon_path = settings.FILEMANAGER_STATIC_ROOT + 'images/icons/' + ext + '.png'
         if not os.path.exists(icon_path):
@@ -456,18 +464,13 @@ class FileManager(object):
                     content_type=mimetypes.guess_type(filepath)[0],
                 )
             response['Content-Length'] = os.path.getsize(filepath)
-            response['Content-Disposition'] = (
-                'attachment; filename=' + path.split('/')[-1]
-            )
+            response['Content-Disposition'] = content_disposition_header(True, os.path.basename(filepath))
             return response
         elif file_or_dir == 'dir':
             dirpath = target
             dirname = os.path.basename(dirpath) or 'root'
             response = HttpResponse(content_type='application/x-gzip')
-            response['Content-Disposition'] = (
-                'attachment; filename=%s.tar.gz'
-                % dirname
-            )
+            response['Content-Disposition'] = content_disposition_header(True, dirname + '.tar.gz')
             tarred = tarfile.open(fileobj=response, mode='w:gz')
             tarred.add(dirpath, arcname=dirname)
             tarred.close()

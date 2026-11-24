@@ -206,5 +206,28 @@ def test_ckeditor_widget_renders_on_current_django_and_escapes_its_config():
     html = widget.render("body", "text", attrs={"id": "id_body"})
 
     assert "<script>alert(1)" not in html
-    assert '"id_body"' in html
+    assert 'CKEDITOR.replace("id_body", ' in html
     assert '"toolbar": "Standard"' in html
+
+
+def test_download_quotes_a_file_name_with_spaces_and_non_ascii_letters(manager, root):
+    (root / "año 2026.txt").write_text("x")
+
+    response = manager.download("año 2026.txt", "file")
+
+    assert response["Content-Disposition"] == "attachment; filename*=utf-8''a%C3%B1o%202026.txt"
+
+
+def test_unzip_reads_the_zip_from_its_own_folder(manager, root, keep_cwd):
+    import zipfile
+
+    image = io.BytesIO()
+    Image.new("RGB", (5, 5), "red").save(image, "PNG")
+    (root / "sub").mkdir()
+    with zipfile.ZipFile(root / "sub" / "bundle.zip", "w") as bundle:
+        bundle.writestr("kept.png", image.getvalue())
+
+    messages = manager.handle_form(_form(action="unzip", path="/sub/bundle.zip", current_path="/sub/"), files=None)
+
+    assert messages == ["Extraction completed successfully."]
+    assert (root / "sub" / "kept.png").exists()
