@@ -5,6 +5,7 @@ import os
 
 import pytest
 from django.http import Http404
+from django.template.loader import render_to_string
 from PIL import Image
 
 from filemanager import FileManager, FileManagerForm
@@ -137,3 +138,15 @@ def test_directory_structure_does_not_change_the_working_directory(manager, root
     assert os.getcwd() == keep_cwd
     assert "docs" in structure[""]["dirs"]
     assert structure[""]["dirs"]["docs"]["files"] == ["a.txt"]
+
+
+def test_template_does_not_let_a_message_close_the_script_tag():
+    payload = "Invalid path : </script><script>alert(1)</script>"
+
+    html = render_to_string(
+        "filemanager/index.html",
+        {"dir_structure": {"": {"id": 1, "open": "yes", "dirs": {}, "files": []}}, "messages": [payload], "current_id": 1},
+    )
+
+    assert "<script>alert(1)" not in html
+    assert "|safe" not in html

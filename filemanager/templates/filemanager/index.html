@@ -9,9 +9,11 @@
  <!--[if IE]>
    <script type="text/javascript" src="{{ STATIC_URL }}js/es5-shim.min.js"></script>
  <![endif]-->
+ {{ dir_structure|json_script:"filemanager-dir-structure" }}
+ {{ messages|json_script:"filemanager-messages" }}
  <script type="text/javascript">
- var dir_structure = {{dir_structure|safe}};
- var messages = {{messages|safe}};
+ var dir_structure = JSON.parse(document.getElementById('filemanager-dir-structure').textContent);
+ var messages = JSON.parse(document.getElementById('filemanager-messages').textContent);
  var dir_id = {{current_id}};
  var ckeditor_baseurl = '{{ ckeditor_baseurl }}';
  var CKEditorFuncNum = {% if CKEditorFuncNum %}{{CKEditorFuncNum}}{% else %}null{%endif%};

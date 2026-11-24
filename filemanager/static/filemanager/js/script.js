@@ -30,7 +30,7 @@ function onload(){
   show_files(dir_id);
   $('body').bind('click',function(e){$('#dir-menu').hide();$('.unzip-menu').hide();$('#file-menu').hide();});
   if(messages.length>0){
-    $('#message').html(messages[0]);
+    $('#message').text(messages[0]);
     setTimeout("$('#message').html('Hint : Use right click to add, rename or delete files and folders');",10000);
   }
   else
