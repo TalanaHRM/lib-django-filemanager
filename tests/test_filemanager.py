@@ -231,3 +231,18 @@ def test_unzip_reads_the_zip_from_its_own_folder(manager, root, keep_cwd):
 
     assert messages == ["Extraction completed successfully."]
     assert (root / "sub" / "kept.png").exists()
+
+
+def test_unzip_without_an_extension_list_does_not_fail(root, keep_cwd):
+    import zipfile
+
+    manager = FileManager(str(root))
+    image = io.BytesIO()
+    Image.new("RGB", (5, 5), "red").save(image, "PNG")
+    with zipfile.ZipFile(root / "bundle.zip", "w") as bundle:
+        bundle.writestr("kept.png", image.getvalue())
+
+    messages = manager.handle_form(_form(action="unzip", path="/bundle.zip"), files=None)
+
+    assert messages == ["Extraction completed successfully."]
+    assert (root / "kept.png").exists()

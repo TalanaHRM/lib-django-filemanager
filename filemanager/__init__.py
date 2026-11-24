@@ -223,8 +223,8 @@ class FileManager(object):
                     mimetype = magic.from_file(filepath, mime=True)
                     guessed_exts = mimetypes.guess_all_extensions(mimetype)
                     guessed_exts = [ext[1:] for ext in guessed_exts]
-                    common = [ext for ext in guessed_exts if ext in self.extensions]
-                    if self.extensions and not common:
+                    allowed = not self.extensions or any(ext in self.extensions for ext in guessed_exts)
+                    if not allowed:
                         os.remove(filepath)
                         messages.append(
                             "File type not allowed : "
@@ -378,7 +378,7 @@ class FileManager(object):
 
     def _extract_allowed(self, zip_ref, directory, messages):
         for member in zip_ref.namelist():
-            if not member.endswith(tuple(self.extensions)):
+            if self.extensions and not member.endswith(tuple(self.extensions)):
                 continue
             target = os.path.realpath(os.path.join(directory, member))
             if not target.startswith(directory + os.sep):
@@ -387,7 +387,7 @@ class FileManager(object):
             extracted = zip_ref.extract(member, directory)
             mimetype = magic.from_file(extracted, mime=True)
             guessed_exts = [ext[1:] for ext in mimetypes.guess_all_extensions(mimetype)]
-            if not [ext for ext in guessed_exts if ext in self.extensions]:
+            if self.extensions and not any(ext in self.extensions for ext in guessed_exts):
                 os.remove(extracted)
                 messages.append("File in the zip is not allowed : " + member)
 
