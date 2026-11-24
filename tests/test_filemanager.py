@@ -150,3 +150,61 @@ def test_template_does_not_let_a_message_close_the_script_tag():
 
     assert "<script>alert(1)" not in html
     assert "|safe" not in html
+
+
+def test_media_serves_the_extension_icon_for_a_non_image_file(manager, root):
+    (root / "notes.txt").write_text("plain text")
+
+    response = manager.media("notes.txt")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "image/png"
+
+
+def test_media_serves_the_extension_icon_for_a_corrupt_image(manager, root):
+    (root / "broken.png").write_bytes(b"not an image")
+
+    response = manager.media("broken.png")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "image/png"
+    assert max(_size(response)) <= 60
+
+
+def test_move_into_its_own_child_folder_is_rejected(manager, root, keep_cwd):
+    (root / "docs" / "inner").mkdir(parents=True)
+
+    messages = manager.handle_form(
+        _form(action="move", path="/docs/", current_path="/docs/inner/", file_or_dir="dir"), files=None
+    )
+
+    assert messages == ["Cannot move/copy to a child folder"]
+    assert (root / "docs" / "inner").is_dir()
+
+
+def test_unzip_skips_members_that_resolve_outside_the_folder(manager, root, keep_cwd):
+    import zipfile
+
+    image = io.BytesIO()
+    Image.new("RGB", (5, 5), "red").save(image, "PNG")
+    with zipfile.ZipFile(root / "bundle.zip", "w") as bundle:
+        bundle.writestr("../escaped.png", image.getvalue())
+        bundle.writestr("kept.png", image.getvalue())
+
+    messages = manager.handle_form(_form(action="unzip", path="/bundle.zip"), files=None)
+
+    assert not (root.parent / "escaped.png").exists()
+    assert (root / "kept.png").exists()
+    assert "File in the zip is not allowed : ../escaped.png" in messages
+
+
+def test_ckeditor_widget_renders_on_current_django_and_escapes_its_config():
+    from filemanager.widgets import CKEditorWidget
+
+    widget = CKEditorWidget(config={"title": "</script><script>alert(1)</script>"})
+
+    html = widget.render("body", "text", attrs={"id": "id_body"})
+
+    assert "<script>alert(1)" not in html
+    assert '"id_body"' in html
+    assert '"toolbar": "Standard"' in html

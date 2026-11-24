@@ -24,7 +24,7 @@ before_script:
 
 # command to run tests, e.g. python setup.py test
 script:
-  - coverage run --source==filemanager runtests.py
+  - coverage run --source=filemanager -m pytest tests -p no:django
 
 # after_success:
 #  coveralls

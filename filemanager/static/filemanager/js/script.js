@@ -52,6 +52,10 @@ function onload(){
 $('body').ready(onload);
 $(window).resize(size);
 
+function escapeHtml(text)
+{ return $('<div>').text(String(text)).html().replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+}
+
 function refresh_dirs()
 {
  $('#left').html(show_directories(dir_structure));
@@ -126,19 +130,19 @@ function show_files(id)
   $('#content').html('');
   for(d in dirs)
   {
-    $('#content').append("<div class='file' title='"+dirs[d]['name']+"'"+
+    $('#content').append("<div class='file' title='"+escapeHtml(dirs[d]['name'])+"'"+
        "onmousedown='rightclick_handle(event,\""+dirs[d]['id']+"\",\"dir\");' ondblclick=\"show_files("+dirs[d]['id']+")\"><div class='thumbnail'>"+
        "<div style=\"background-image:url('"+static_url+"filemanager/images/folder_big.png');\" width='100%' height='100%' ></div></div>"+
-       "<div class='filename'>"+dirs[d]['name']+"</div></div>\n");
+       "<div class='filename'>"+escapeHtml(dirs[d]['name'])+"</div></div>\n");
   }
   for(f in files)
   { var ext = files[f].split('.')[(files[f].split('.').length-1)];
     $('#content').append("<div class='file' title='"+escape(files[f])+"'"+
        "onmousedown='rightclick_handle(event,\""+escape(files[f])+"\",\"file\");'><div class='thumbnail'>"+
        "<div style=\"background-image:url('"+get_path(id).substr(1)+escape(files[f])+"');\" width='100%' height='100%' ></div></div>"+
-       "<div class='filename'>"+files[f]+"</div></div>\n");
+       "<div class='filename'>"+escapeHtml(files[f])+"</div></div>\n");
   }
-  $('#status').html(get_path(id))
+  $('#status').text(get_path(id))
   $('.current_directory').removeClass('current_directory');
   $('#'+dir_id).addClass('current_directory');
 }
@@ -157,7 +161,7 @@ function show_directories(ds)
      html+="<div class='directory "+(id==dir_id?'current_directory':'')+"' id='"+id+"'><div class='directory-sign' onclick='change_sign("+id+")'>"+sign+"</div>"+
            "<div class='directory-image-name' onclick='show_files("+id+")' onmousedown='rightclick_handle(event,"+id+",\"dir\");'>"+
            "<img class='directory-image' src='"+static_url+"filemanager/images/"+image+"'/>"+
-           "<div class='directory-name' >"+(d==''?'root':d)+"</div></div></div>\n";
+           "<div class='directory-name' >"+escapeHtml(d==''?'root':d)+"</div></div></div>\n";
      if(ds[d]['open']=='yes')
        html+="<div style='padding-left:15px'>"+show_directories(ds[d]['dirs'])+"</div>\n";
   }

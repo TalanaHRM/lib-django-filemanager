@@ -212,11 +212,8 @@ class FileManager(object):
                         )
                 else:
                     filename = f.name.replace(' ', '_')  # replace spaces to prevent fs error
-                    filepath = (
-                        self.basepath
-                        + path
-                        + self.rename_if_exists(self.basepath + path, filename)
-                    )
+                    folder = self.resolve(path)
+                    filepath = os.path.join(folder, self.rename_if_exists(folder, filename))
                     with open(filepath, 'wb') as dest:
                         for chunk in f.chunks():
                             dest.write(chunk)
@@ -327,15 +324,12 @@ class FileManager(object):
                     messages.append('Unexpected error : ' + str(e))
         elif action == 'move' or action == 'copy':
             # from path to current_path
-            if self.current_path.find(path) == 0:
+            source = self.resolve(path)
+            destination = self.resolve(self.current_path)
+            if os.path.commonpath([source, destination]) == source:
                 messages.append('Cannot move/copy to a child folder')
             else:
-                path = os.path.normpath(path)  # strip trailing slash if any
-                filename = (
-                    self.basepath
-                    + self.current_path
-                    + os.path.basename(path)
-                )
+                filename = os.path.join(destination, os.path.basename(source))
                 if os.path.exists(filename):
                     messages.append(
                         'ERROR: A file/folder with this name already exists in'
@@ -350,7 +344,7 @@ class FileManager(object):
                         else:
                             method = shutil.copy
                     try:
-                        method(self.basepath + path, filename)
+                        method(source, filename)
                     except OSError:
                         messages.append(
                             'File/folder couldn\'t be moved/copied.'
@@ -362,29 +356,10 @@ class FileManager(object):
                 messages.append('Cannot unzip a directory')
             else:
                 try:
-                    path = os.path.normpath(path)  # strip trailing slash if any
-                    filename = (
-                        self.basepath
-                        + self.current_path
-                        + os.path.basename(path)
-                    )
-                    zip_ref = zipfile.ZipFile(filename, 'r')
-                    # zip_ref.extractall(self.basepath + self.current_path)
-                    directory = self.basepath + self.current_path
-                    for file in zip_ref.namelist():
-                        if file.endswith(tuple(self.extensions)):
-                            zip_ref.extract(file, directory)
-                            mimetype = magic.from_file(directory + file, mime=True)
-                            guessed_exts = mimetypes.guess_all_extensions(mimetype)
-                            guessed_exts = [ext[1:] for ext in guessed_exts]
-                            common = [ext for ext in guessed_exts if ext in self.extensions]
-                            if not common:
-                                os.remove(directory+file)
-                                messages.append(
-                                    "File in the zip is not allowed : "
-                                    + file
-                                )
-                    zip_ref.close()
+                    directory = self.resolve(self.current_path)
+                    filename = os.path.join(directory, os.path.basename(os.path.normpath(path)))
+                    with zipfile.ZipFile(filename, 'r') as zip_ref:
+                        self._extract_allowed(zip_ref, directory, messages)
                 except Exception:
                     logger.exception('Could not unzip %s', path)
                     messages.append('ERROR : Could not unzip the file.')
@@ -392,6 +367,21 @@ class FileManager(object):
                     messages.append('Extraction completed successfully.')
 
         return messages
+
+    def _extract_allowed(self, zip_ref, directory, messages):
+        for member in zip_ref.namelist():
+            if not member.endswith(tuple(self.extensions)):
+                continue
+            target = os.path.realpath(os.path.join(directory, member))
+            if not target.startswith(directory + os.sep):
+                messages.append("File in the zip is not allowed : " + member)
+                continue
+            extracted = zip_ref.extract(member, directory)
+            mimetype = magic.from_file(extracted, mime=True)
+            guessed_exts = [ext[1:] for ext in mimetypes.guess_all_extensions(mimetype)]
+            if not [ext for ext in guessed_exts if ext in self.extensions]:
+                os.remove(extracted)
+                messages.append("File in the zip is not allowed : " + member)
 
     def directory_structure(self):
         self.idee = 0
