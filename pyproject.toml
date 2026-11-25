@@ -2,14 +2,22 @@
 # Packaging is still defined in setup.py. Keep name, version and dependencies in sync with it.
 [project]
 name = "django-filemanager"
-version = "0.0.4"
+version = "1.0.0"
 description = "A file manager for Django"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 dependencies = [
-    "django",
+    "django>=4.2",
     "Pillow",
     "python-magic",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "coverage",
+    "flake8",
+    "isort",
 ]
 
 [tool.uv]

@@ -1,6 +1,0 @@
-coverage
-coveralls
-responses
-isort
-flake8
-pytest
