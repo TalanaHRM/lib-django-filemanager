@@ -167,6 +167,7 @@ class FileManager(object):
             for f in files.getlist('ufile'):
                 file_name_invalid = (
                     re.search(r'\.\.', f.name)
+                    or os.path.basename(f.name) != f.name  # a name is one path component: no folders, not absolute
                     or not re.match(r'[\w\d_ -/.]+', f.name).group(0) == f.name
                 )
                 if file_name_invalid:
