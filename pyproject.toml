@@ -14,3 +14,6 @@ dependencies = [
 
 [tool.uv]
 package = false
+# The lock describes what the unpinned dependencies resolve to on the Python used by CI.
+# It does not change Requires-Python above. A consumer's own pins (talana-core) win when installing.
+environments = ["python_version >= '3.12'"]
