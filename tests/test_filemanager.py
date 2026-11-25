@@ -246,3 +246,49 @@ def test_unzip_without_an_extension_list_does_not_fail(root, keep_cwd):
 
     assert messages == ["Extraction completed successfully."]
     assert (root / "kept.png").exists()
+
+
+class _FakeUpload:
+    """Upload whose name keeps its path, as an object that did not go through Django's multipart parser."""
+
+    def __init__(self, name, content=b"payload"):
+        self.name = name
+        self._content = content
+        self.size = len(content)
+
+    def chunks(self):
+        yield self._content
+
+    def close(self):
+        pass
+
+
+class _FakeFiles:
+    def __init__(self, *uploads):
+        self._uploads = list(uploads)
+
+    def getlist(self, key):
+        return self._uploads if key == "ufile" else []
+
+
+@pytest.mark.parametrize("name_for", [
+    lambda tmp: str(tmp / "escaped.txt"),  # absolute path: os.path.join drops the upload folder
+    lambda tmp: "sub/escaped.txt",  # separator: names are single path components
+])
+def test_upload_rejects_a_name_that_carries_a_path(manager, root, tmp_path, name_for):
+    messages = manager.handle_form(
+        _form(action="upload", path="/"), _FakeFiles(_FakeUpload(name_for(tmp_path)))
+    )
+
+    assert any("File name is not valid" in str(m) for m in messages)
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not (root / "sub").exists()
+
+
+def test_upload_stores_a_plain_name_inside_the_folder(manager, root):
+    messages = manager.handle_form(
+        _form(action="upload", path="/"), _FakeFiles(_FakeUpload("note.txt", b"hello world"))
+    )
+
+    assert (root / "note.txt").read_bytes() == b"hello world"
+    assert "All files uploaded successfully" in [str(m) for m in messages]
