@@ -27,7 +27,7 @@ def get_install_requires():
 
 setup(
     name="django-filemanager",
-    version="0.0.4",
+    version="1.0.0",
     author="Information Management Group; Talana",
     author_email="img.iitr.img@gmail.com",
     description="A file manager for Django",
