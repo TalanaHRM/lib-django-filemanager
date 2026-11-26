@@ -36,7 +36,7 @@ The package is not published on PyPI. The name `django-filemanager` on PyPI belo
 or, better, to a commit:
 
 <pre>
-pip install "django-filemanager @ git+https://github.com/TalanaHRM/lib-django-filemanager.git@v1.0.0"
+pip install "django-filemanager @ git+https://github.com/TalanaHRM/lib-django-filemanager.git@v1.0.1"
 </pre>
 
 The same line works in a `requirements.txt` file.
