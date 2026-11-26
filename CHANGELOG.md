@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-11-26
+
+Fixes found while testing 1.0.0 in a QA environment (Jira: TM-817). All of them come from the original code
+(`re.match(...).group(0)` and unchecked file operations, present since the first commit in 2014), not from the
+1.0.0 changes.
+
+### Fixed
+
+- A name or path whose first character is outside the allowed set (`@`, `<`, `=`, `[`, `~`, `{` and others)
+  made `handle_form` and `download` fail with `AttributeError: 'NoneType' object has no attribute 'group'`
+  and an HTTP 500. It now answers the usual "Invalid path", "Invalid folder name", "Invalid file name" or
+  "File name is not valid" message. An empty `path` answers "Invalid path" too.
+- `download` raises `Http404` for a file or a folder that does not exist, or that is the other kind (a folder
+  requested as a file), instead of failing with an HTTP 500. An unknown download mode answers HTTP 400.
+- Renaming a file or a folder to the name of one that already exists no longer replaces it silently: it answers
+  "... already exists" and keeps both. Renaming to its own name is still accepted.
+- Uploading an empty file now answers "File is empty : <name>". Before, the form rejected it without any
+  message and the user saw nothing. `FileManagerForm.ufile` accepts empty files (`allow_empty_file=True`) so the
+  message can be produced; an empty file is never stored.
+
 ## [1.0.0] - 2026-11-25
 
 First release maintained by Talana at `TalanaHRM/lib-django-filemanager`. It is based on the

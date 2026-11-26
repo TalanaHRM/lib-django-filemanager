@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.utils.http import content_disposition_header
 from django import forms
 from PIL import Image
@@ -17,6 +17,16 @@ import magic
 path_end = r'(?P<path>[\w\d_ -/.]*)$'
 
 logger = logging.getLogger(__name__)
+
+
+def _made_of(pattern, value):
+    """True when every character of value is allowed by pattern.
+
+    re.match(...).group(0) raised AttributeError, and so ended in an HTTP 500, when the first character was not
+    allowed.
+    """
+    return re.fullmatch(pattern, value) is not None
+
 
 THUMBNAIL_MAX_SIDE = 60
 
@@ -49,7 +59,7 @@ ActionChoices = (
 
 
 class FileManagerForm(forms.Form):
-    ufile = forms.FileField(required=False)
+    ufile = forms.FileField(required=False, allow_empty_file=True)  # an empty upload is answered in handle_form
     action = forms.ChoiceField(choices=ActionChoices)
     path = forms.CharField(max_length=200, required=False)
     name = forms.CharField(max_length=32, required=False)
@@ -137,7 +147,7 @@ class FileManager(object):
         invalid_folder_name = (
             name
             and file_or_dir == 'dir'
-            and not re.match(r'[\w\d_ -]+', name).group(0) == name
+            and not _made_of(r'[\w\d_ -]+', name)
         )
         if invalid_folder_name:
             messages.append("Invalid folder name : " + name)
@@ -148,7 +158,7 @@ class FileManager(object):
             and file_or_dir == 'file'
             and (
                 re.search(r'\.\.', name)
-                or not re.match(r'[\w\d_ -.]+', name).group(0) == name
+                or not _made_of(r'[\w\d_ -.]+', name)
             )
         )
         if invalid_file_name:
@@ -156,7 +166,7 @@ class FileManager(object):
             return messages
 
         invalid_path = (
-            not re.match(r'[\w\d_ -/]+', path).group(0) == path
+            not _made_of(r'[\w\d_ -/]+', path)
             or self.resolve(path) is None
             or self.resolve(self.current_path) is None
         )
@@ -168,10 +178,12 @@ class FileManager(object):
                 file_name_invalid = (
                     re.search(r'\.\.', f.name)
                     or os.path.basename(f.name) != f.name  # a name is one path component: no folders, not absolute
-                    or not re.match(r'[\w\d_ -/.]+', f.name).group(0) == f.name
+                    or not _made_of(r'[\w\d_ -/.]+', f.name)
                 )
                 if file_name_invalid:
                     messages.append("File name is not valid : " + f.name)
+                elif f.size == 0:
+                    messages.append("File is empty : " + f.name)
                 elif f.size > self.maxfilesize*1024:
                     messages.append(
                         "File size exceeded "
@@ -255,13 +267,19 @@ class FileManager(object):
             path = '/'.join(path.split('/')[:-2])
             try:
                 folder = self.resolve(path)
-                os.rename(os.path.join(folder, oldname), os.path.join(folder, name))
-                messages.append(
-                    'Folder renamed successfully from '
-                    + oldname
-                    + ' to '
-                    + name
-                )
+                if name != oldname and os.path.lexists(os.path.join(folder, name)):
+                    messages.append(
+                        'Folder couldn\'t be renamed, a folder or file with this name already exists : '
+                        + name
+                    )
+                else:
+                    os.rename(os.path.join(folder, oldname), os.path.join(folder, name))
+                    messages.append(
+                        'Folder renamed successfully from '
+                        + oldname
+                        + ' to '
+                        + name
+                    )
             except OSError:
                 messages.append('Folder couldn\'t renamed to ' + name)
             except Exception:
@@ -293,13 +311,19 @@ class FileManager(object):
                 path = '/'.join(path.split('/')[:-1])
                 try:
                     folder = self.resolve(path)
-                    os.rename(os.path.join(folder, oldname), os.path.join(folder, name))
-                    messages.append(
-                        'File renamed successfully from '
-                        + oldname
-                        + ' to '
-                        + name
-                    )
+                    if name != oldname and os.path.lexists(os.path.join(folder, name)):
+                        messages.append(
+                            'File couldn\'t be renamed, a file or folder with this name already exists : '
+                            + name
+                        )
+                    else:
+                        os.rename(os.path.join(folder, oldname), os.path.join(folder, name))
+                        messages.append(
+                            'File renamed successfully from '
+                            + oldname
+                            + ' to '
+                            + name
+                        )
                 except OSError:
                     messages.append('File couldn\'t be renamed to ' + name)
                 except Exception:
@@ -452,12 +476,14 @@ class FileManager(object):
             return _image_response(_thumbnail(icon), 'image/png', 'png')
 
     def download(self, path, file_or_dir):
-        if not re.match(r'[\w\d_ -/]*', path).group(0) == path:
+        if not _made_of(r'[\w\d_ -/]*', path):
             return HttpResponse('Invalid path')
         target = self.resolve(path)
         if target is None:
             raise Http404('File not found')
         if file_or_dir == 'file':
+            if not os.path.isfile(target):
+                raise Http404('File not found')
             filepath = target
             with open(filepath, 'rb') as f:
                 response = HttpResponse(
@@ -468,6 +494,8 @@ class FileManager(object):
             response['Content-Disposition'] = content_disposition_header(True, os.path.basename(filepath))
             return response
         elif file_or_dir == 'dir':
+            if not os.path.isdir(target):
+                raise Http404('Folder not found')
             dirpath = target
             dirname = os.path.basename(dirpath) or 'root'
             response = HttpResponse(content_type='application/x-gzip')
@@ -476,6 +504,7 @@ class FileManager(object):
             tarred.add(dirpath, arcname=dirname)
             tarred.close()
             return response
+        return HttpResponseBadRequest('Invalid download mode')
 
     def render(self, request, path):
         if 'download' in request.GET:
