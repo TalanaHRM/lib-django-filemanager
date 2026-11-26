@@ -292,3 +292,116 @@ def test_upload_stores_a_plain_name_inside_the_folder(manager, root):
 
     assert (root / "note.txt").read_bytes() == b"hello world"
     assert "All files uploaded successfully" in [str(m) for m in messages]
+
+
+# --- 1.0.1: inputs that used to end in an HTTP 500 or in a silent overwrite -------------------------------
+
+
+@pytest.mark.parametrize("fields, expected", [
+    # A first character outside the allowed class made re.match return None and crashed with AttributeError.
+    (dict(action="delete", path="<x>"), "Invalid path"),
+    (dict(action="delete", path="@x"), "Invalid path"),
+    (dict(action="add", path="", name="docs", file_or_dir="dir"), "Invalid path"),
+    (dict(action="add", path="/", name="..", file_or_dir="dir"), "Invalid folder name"),
+    (dict(action="add", path="/", name="[docs]", file_or_dir="dir"), "Invalid folder name"),
+    (dict(action="rename", path="/old.txt", name="<x>.txt"), "Invalid file name"),
+])
+def test_form_actions_answer_a_message_for_a_value_that_starts_with_an_unlisted_character(
+    manager, root, keep_cwd, fields, expected
+):
+    (root / "old.txt").write_text("x")
+
+    messages = manager.handle_form(_form(**fields), files=None)
+
+    assert any(expected in str(m) for m in messages)
+    assert (root / "old.txt").read_text() == "x"
+
+
+@pytest.mark.parametrize("name", ["@x.png", "[report].png", "~backup.png", "=x.png"])
+def test_upload_answers_a_message_for_a_name_that_starts_with_an_unlisted_character(manager, root, name):
+    messages = manager.handle_form(_form(action="upload", path="/"), _FakeFiles(_FakeUpload(name)))
+
+    assert any("File name is not valid" in str(m) for m in messages)
+    assert list(root.iterdir()) == []
+
+
+def test_download_answers_invalid_path_for_a_path_that_starts_with_an_unlisted_character(manager):
+    response = manager.download("@x.png", "file")
+
+    assert response.content == b"Invalid path"
+
+
+def test_download_of_a_file_that_does_not_exist_is_a_404(manager):
+    with pytest.raises(Http404):
+        manager.download("missing.txt", "file")
+
+
+def test_download_of_a_folder_that_does_not_exist_is_a_404(manager):
+    with pytest.raises(Http404):
+        manager.download("missing/", "dir")
+
+
+def test_download_of_a_folder_as_a_file_is_a_404(manager, root):
+    (root / "docs").mkdir()
+
+    with pytest.raises(Http404):
+        manager.download("docs", "file")
+
+
+def test_download_with_an_unknown_mode_is_a_400(manager, root):
+    (root / "notes.txt").write_text("hello")
+
+    assert manager.download("notes.txt", "bogus").status_code == 400
+
+
+def test_rename_a_file_onto_an_existing_one_keeps_both(manager, root, keep_cwd):
+    (root / "a.txt").write_text("first")
+    (root / "b.txt").write_text("second")
+
+    messages = manager.handle_form(_form(action="rename", path="/a.txt", name="b.txt"), files=None)
+
+    assert (root / "a.txt").read_text() == "first"
+    assert (root / "b.txt").read_text() == "second"
+    assert any("already exists" in str(m) for m in messages)
+    assert not any("renamed successfully" in str(m) for m in messages)
+
+
+def test_rename_a_folder_onto_an_existing_one_keeps_both(manager, root, keep_cwd):
+    (root / "one").mkdir()
+    (root / "two").mkdir()
+    (root / "one" / "inside.txt").write_text("x")
+
+    messages = manager.handle_form(
+        _form(action="rename", path="/one/", name="two", file_or_dir="dir"), files=None
+    )
+
+    assert (root / "one" / "inside.txt").exists()
+    assert (root / "two").is_dir()
+    assert any("already exists" in str(m) for m in messages)
+
+
+def test_rename_a_file_to_its_own_name_is_still_accepted(manager, root, keep_cwd):
+    (root / "a.txt").write_text("first")
+
+    messages = manager.handle_form(_form(action="rename", path="/a.txt", name="a.txt"), files=None)
+
+    assert (root / "a.txt").read_text() == "first"
+    assert not any("already exists" in str(m) for m in messages)
+
+
+def test_form_accepts_an_empty_upload_so_the_user_gets_a_message():
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    form = FileManagerForm(
+        {"action": "upload", "path": "/", "file_or_dir": "file", "current_path": "/"},
+        {"ufile": SimpleUploadedFile("empty.txt", b"")},
+    )
+
+    assert form.is_valid(), form.errors
+
+
+def test_upload_of_an_empty_file_is_rejected_with_a_message(manager, root):
+    messages = manager.handle_form(_form(action="upload", path="/"), _FakeFiles(_FakeUpload("empty.txt", b"")))
+
+    assert "File is empty : empty.txt" in [str(m) for m in messages]
+    assert list(root.iterdir()) == []
